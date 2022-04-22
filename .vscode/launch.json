@@ -1,0 +1,35 @@
+{
+	"version": "0.2.0",
+	"configurations": [{
+			"name": "Run Extension",
+			"type": "extensionHost",
+			"request": "launch",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--disable-extensions",
+        		"--extensionDevelopmentPath=${workspaceFolder}/editors/code"
+			],
+			"outFiles": [
+				"${workspaceFolder}/editors/code/out/**/*.js"
+			],
+			"preLaunchTask": "Build Server and Extension",
+			"env": {
+				"__DL_LSP_SERVER_DEBUG": "${workspaceFolder}/target/debug/deadlock-lsp",
+				"__DL_RUSTC": "${workspaceFolder}/target/debug/rustc"
+			}
+		},
+		{
+			"name": "Run Unit Tests",
+			"type": "extensionHost",
+			"request": "launch",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}/editors/code",
+				"--extensionTestsPath=${workspaceFolder}/editors/code/out/tests/unit" ],
+			"sourceMaps": true,
+			"outFiles": [ "${workspaceFolder}/editors/code/out/tests/unit/**/*.js" ],
+			"preLaunchTask": "Pretest"
+		  }
+		
+	]
+}
