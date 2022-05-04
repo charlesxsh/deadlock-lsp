@@ -17,10 +17,21 @@ function createClient(serverPath, extraEnv) {
     const traceOutputChannel = vscode.window.createOutputChannel('Rust Deadlock Detector Language Server Trace');
     const clientOptions = {
         documentSelector: [{ scheme: 'file', language: 'rust' }],
-        traceOutputChannel
+        traceOutputChannel,
+        diagnosticCollectionName: "rust-deadlock-detector",
+        errorHandler: {
+            error: (err) => {
+                console.error("lsp client", err);
+                return {
+                    action: node_1.ErrorAction.Continue
+                };
+            },
+            closed: () => ({
+                action: node_1.CloseAction.Restart
+            })
+        }
     };
-    const client = new node_1.LanguageClient("rust-deadlock-server", "Rust Deadlock Detector Language Server", serverOptions, clientOptions);
-    client.registerProposedFeatures();
+    const client = new node_1.LanguageClient("rust-deadlock", "Rust Deadlock Detector Language Server", serverOptions, clientOptions);
     return client;
 }
 exports.createClient = createClient;

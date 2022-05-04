@@ -1,8 +1,11 @@
 import {
+	CloseAction,
+	ErrorAction,
 	Executable,
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
+	Trace,
 	TransportKind
   } from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
@@ -24,15 +27,27 @@ export function createClient(serverPath: string, extraEnv: Record<string, any>):
     );
 	const clientOptions: LanguageClientOptions = {
 		documentSelector: [{ scheme: 'file', language: 'rust' }],
-		traceOutputChannel
+		traceOutputChannel,
+		diagnosticCollectionName: "rust-deadlock-detector",
+		errorHandler: {
+			error: (err) => {
+				console.error("lsp client", err);
+				return{
+					action: ErrorAction.Continue
+				};
+			},
+			closed: () => ({
+				action: CloseAction.Restart
+			})
+		}
+
 	};
 	const client = new LanguageClient(
-		"rust-deadlock-server",
+		"rust-deadlock",
 		"Rust Deadlock Detector Language Server",
 		serverOptions,
 		clientOptions
-	);
+	);	
 	
-	client.registerProposedFeatures();
 	return client;
 }

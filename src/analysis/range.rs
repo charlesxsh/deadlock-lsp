@@ -247,12 +247,14 @@ pub fn parse_span(span: &Span) -> (String, RangeInFile) {
     let labels: Vec<&str> = span_str.split(":").collect();
     assert!(labels.len() == 5);
     let filename = labels[0];
+    let mut abs_file = std::fs::canonicalize(&filename).unwrap();
+   
     let line_0: u32 = labels[1].parse().unwrap();
     let col_0: u32 = labels[2].parse().unwrap();
     let line_1: u32 = labels[3][1..].parse().unwrap();
     let last_part_end = labels[4].find(" ").unwrap();
     let col_1: u32 = labels[4][..last_part_end].parse().unwrap();
-    (filename.to_string(), RangeInFile(PosInFile(line_0, col_0), PosInFile(line_1, col_1)))
+    (abs_file.into_os_string().into_string().unwrap(), RangeInFile(PosInFile(line_0, col_0), PosInFile(line_1, col_1)))
 }
 
 fn get_span(loc: &Location, body: &Body) -> Span {

@@ -1,4 +1,4 @@
-use std::{error::Error, process::Command, env, ffi::OsString, fs};
+use std::{error::Error, process::{Command, Stdio}, env, ffi::OsString, fs};
 
 use log::info;
 use lsp_types::{
@@ -28,6 +28,7 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
             })),
             selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
             document_highlight_provider: Some(OneOf::Left(true)),
+            
             ..Default::default()
         }
     ).unwrap();
@@ -46,7 +47,6 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
     let mut ctx = global_ctxt::GlobalCtxt::new(connection.sender.clone());
-    eprintln!("starting example main loop");
     
     for msg in &connection.receiver {
         // eprintln!("got msg: {:?}", msg);
@@ -70,38 +70,7 @@ fn main_loop(
                 
                 match cast::<DocumentHighlightRequest>(req) {
                     Ok((id, params)) => {
-                        eprintln!("got highlight request #{}: {:?}", id, params);
-                        params.text_document_position_params.text_document.uri.as_str();
-                        params.text_document_position_params.position;
-
-                        let mut highlights: Vec<DocumentHighlight> = Vec::new();
-
-                        let h: DocumentHighlight = DocumentHighlight {
-                            range: Range {
-                                start: Position {
-                                    line: 3,
-                                    character: 0,
-                                },
-                                end: Position {
-                                    line: 10,
-                                    character: 10,
-                                },
-                            },
-                            kind: Some(DocumentHighlightKind::TEXT)
-                        };
-
-                        highlights.push(h);
-
-                        let res =  lsp_server::Response::new_ok(id, highlights);
-                        
-                        match connection.sender.send(res.into()) {
-                            Ok(()) => {
-                                eprintln!("sent highlight!")
-                            },
-                            Err(err) => {
-                                eprintln!("send highlight error: {:?}", err);
-                            }
-                        }
+                        ctx.send_highlight(id, params);
                     },
                     Err(err) => {
                         eprintln!("parse highlight error: {:?}", err);
@@ -114,23 +83,28 @@ fn main_loop(
             }
             Message::Notification(not) => {
                 eprintln!("got notification: {:?}", not);
-                
-                match cast_notification::<DidSaveTextDocument>(not) {
+                // match cast_notification::<lsp_types::notification::DidOpenTextDocument>(not.clone()) {
+                //     Ok(params) => {
+                //         eprintln!("DidOpenTextDocument {:?} ", params);
+                //     }
+                //     Err(_) => {}
+                // }
+                match cast_notification::<DidSaveTextDocument>(not.clone()) {
                     Ok(params) => {
                         eprintln!("{:?} saved!", params.text_document);
+                        eprintln!("connection.sender {:?}", connection.sender.len());
                         match &_params.workspace_folders {
                             Some(workspaces) => {
-                                if workspaces.len() == 0 {
-                                    return Ok(());
-                                }
+                                
                                 let ws = &workspaces[0];
                                 let analysis_out = ws.uri.to_file_path().unwrap().join(".rda/a.json")
                                 .to_str().unwrap().to_string();
+                                std::fs::remove_file(&analysis_out);
                                 run_analysis_in_dir(ws.uri.to_file_path().unwrap().to_str().unwrap(), &analysis_out);
                                 ctx.update_from_json(&analysis_out);
                                 ctx.send_diagnoistic();
                             },
-                            None => todo!(),
+                            None => {},
                         }
                         
                     },
@@ -149,6 +123,7 @@ where
 {
     req.extract(R::METHOD)
 }
+
 
 fn cast_notification<R>(req: Notification) -> Result<R::Params, ExtractError<Notification>>
 where
@@ -196,7 +171,7 @@ fn run_analysis_in_dir(dir: &str, out: &String) {
     cmd.env("__DL_OUT", out);
     cmd.arg("check");
     cmd.current_dir(ws_dir);
-
+    cmd.stdout(Stdio::null());
     eprintln!("{:?} in {:?}", cmd, ws_dir);
     let exit_status = cmd
         .spawn()

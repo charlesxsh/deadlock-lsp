@@ -1,8 +1,9 @@
-use std::{collections::{HashMap, HashSet}, rc::Rc, cell::RefCell, fs::{File, self}, env, ffi::OsString};
+use std::{collections::{HashMap, HashSet}, rc::Rc, cell::RefCell, fs::{File, self}, env, ffi::OsString, fmt::Display};
 
 use log::info;
 use rustc_hir::def_id::{LOCAL_CRATE, LocalDefId, DefId};
 use rustc_middle::{ty::{TyCtxt, Ty, TyKind::FnDef}, mir::{Body, Local, Terminator, StatementKind, TerminatorKind}};
+use rustc_span::Symbol;
 use serde::{Serialize, Deserialize};
 
 use crate::analysis::call_graph::analyze_callgraph;
@@ -21,6 +22,16 @@ pub enum CriticalSectionCall {
     ChSend,
     ChRecv,
     CondVarWait
+}
+
+impl Display for CriticalSectionCall {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CriticalSectionCall::ChSend => write!(f, "{}", "channel send"),
+            CriticalSectionCall::ChRecv => write!(f, "{}", "channel recv"),
+            CriticalSectionCall::CondVarWait =>  write!(f, "{}", "conditional variable wait"),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -79,9 +90,25 @@ type CSCallFilter<'tcx> = dyn Fn(TyCtxt<'tcx>, &CallSite) -> bool;
 type CSCallFilterSet<'tcx> = HashMap<CriticalSectionCall, &'tcx CSCallFilter<'tcx>>;
 
 pub fn find_in_lifetime<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, lt:&Lifetime, callgraph: &call_graph::CallGraph<'tcx>, cs_calls:& mut Vec<CallInCriticalSection>, callchains:Vec<CallSite<'tcx>>, filter_set:&CSCallFilterSet<'tcx>) {
+    if callchains.len() > 20 {
+        eprintln!("find_in_lifetime callchain too long, skip");
+        return;
+    }
+    let symbols: Vec<Symbol> = callchains.iter().map(|c| tcx.item_name(c.callee.def_id())).collect();
+    eprintln!("find_in_lifetime {:?}", symbols);
     let callsites = &callgraph.callsites[&body.source.def_id()];
     for cs in callsites {
         let callee_id = cs.callee.def_id();
+
+        // check recursion
+        for ch in &callchains {
+            if ch.callee.def_id() == callee_id {
+                eprintln!("recursive found: {:?}, skip", tcx.item_name(callee_id));
+
+                continue;
+            }
+        }
+
         let mut cs_call_type: Option<CriticalSectionCall> = None;
         for (t, f) in filter_set {
             if f(tcx, cs) {
@@ -89,31 +116,33 @@ pub fn find_in_lifetime<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, lt:&L
                 break;
             }
         }
-        // if callchain is 0, means it is not in the critical section yet
+        // if callchain is 0, means body has critical section but looking whether a call is inside of critical section
         if callchains.len() == 0 {
             for loc in &lt.live_locs {
                 if cs.location != *loc {
                     continue
                 }
-                
+                let mut new_cc = callchains.clone();
+                new_cc.push(cs.clone());
                 if cs_call_type != None {
                     // if this call is in critical section and is our interests
-                    let mut new_cc = callchains.clone();
-                    new_cc.push(cs.clone());
                     cs_calls.push(CallInCriticalSection{
                         callchains: callchains_to_spans(&new_cc),
                         ty:cs_call_type.unwrap(),
-                    })
-                } else {
-                    // if this call is not in critical section and is not our interests
-
-                    let mut new_cc = callchains.clone();
-                    new_cc.push(cs.clone());
+                    });
+                    break
+                } 
+                else {
+                    // if this call is in critical section and is not our interests
+                    if !tcx.is_mir_available(callee_id) {
+                        continue;
+                    }
                     let callee_body = tcx.optimized_mir(callee_id);
                     find_in_lifetime(tcx, callee_body, lt, callgraph, cs_calls, new_cc, filter_set)
                 }
             }
         } else {
+            // if the whole body is in the critical section 
             let mut new_cc = callchains.clone();
             new_cc.push(cs.clone());
             if cs_call_type != None {
@@ -122,6 +151,13 @@ pub fn find_in_lifetime<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, lt:&L
                     callchains: callchains_to_spans(&new_cc),
                     ty: cs_call_type.unwrap(),
                 })
+            } else {
+                // if this call is in critical section and is not our interests
+                if !tcx.is_mir_available(callee_id) {
+                    continue;
+                }
+                let callee_body = tcx.optimized_mir(callee_id);
+                find_in_lifetime(tcx, callee_body, lt, callgraph, cs_calls, new_cc, filter_set)
             }
         }
         
@@ -227,7 +263,6 @@ pub fn analyze(tcx: TyCtxt) -> Result<AnalysisResult, Box<dyn std::error::Error>
 
 
     }
-    println!("output to {:?}", dl_out);
     if dl_out != "" {
         let out_file = std::path::Path::new(&dl_out);
         fs::create_dir_all(out_file.parent().unwrap())?;

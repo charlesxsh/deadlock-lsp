@@ -79,7 +79,7 @@ pub fn analyze_callgraph<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, call
                 Ok(()) => {},
                 Err(reason) => {
                     let callee_name = tcx.item_name(callee_def_id);
-                    println!("MIR of {} is unavailable: {}", callee_name, reason);
+                    eprintln!("MIR of {} is unavailable: {}", callee_name, reason);
                     continue;
                 }
             }

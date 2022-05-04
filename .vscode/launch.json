@@ -15,7 +15,8 @@
 			"preLaunchTask": "Build Server and Extension",
 			"env": {
 				"__DL_LSP_SERVER_DEBUG": "${workspaceFolder}/target/debug/deadlock-lsp",
-				"__DL_RUSTC": "${workspaceFolder}/target/debug/rustc"
+				"__DL_RUSTC": "${workspaceFolder}/target/debug/rustc",
+				"DYLD_LIBRARY_PATH": "/Users/xsh/.rustup/toolchains/nightly-2022-01-27-x86_64-apple-darwin/lib"
 			}
 		},
 		{

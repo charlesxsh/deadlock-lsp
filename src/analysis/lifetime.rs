@@ -5,6 +5,7 @@ use rustc_hir::def_id::{LocalDefId, DefId};
 use rustc_index::bit_set::BitSet;
 use rustc_middle::{ty::{TyCtxt, Ty}, mir::{Body, Local, BasicBlock, StatementKind, TerminatorKind, Rvalue, Location, Operand}};
 use rustc_mir_dataflow::Analysis;
+use rustc_mir_dataflow::CallReturnPlaces;
 use rustc_span::Span;
 
 use super::ty::{Lifetimes};
@@ -124,9 +125,7 @@ impl<'tcx, 'a> rustc_mir_dataflow::Analysis<'tcx> for LifetimeAnalysis<'tcx, 'a>
         &self,
         state: &mut Self::Domain,
         block: BasicBlock,
-        func: &rustc_middle::mir::Operand<'tcx>,
-        args: &[rustc_middle::mir::Operand<'tcx>],
-        return_place: rustc_middle::mir::Place<'tcx>,
+        return_places: CallReturnPlaces<'_, 'tcx>
     ) {
         
     }

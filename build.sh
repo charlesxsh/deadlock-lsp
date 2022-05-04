@@ -1,0 +1,1 @@
+docker build -f docker/checker/Dockerfile -t deadlock-checker:local .
