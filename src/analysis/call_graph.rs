@@ -78,7 +78,7 @@ pub fn analyze_callgraph<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, call
             match check_mir_is_available(tcx, body_to_visit, &cs.callee) {
                 Ok(()) => {},
                 Err(reason) => {
-                    let callee_name = tcx.item_name(callee_def_id);
+                    //let callee_name = tcx.item_name(callee_def_id);
                     // eprintln!("MIR of {} is unavailable: {}", callee_name, reason);
                     continue;
                 }
@@ -208,7 +208,7 @@ fn check_mir_is_available<'tcx>(
         | InstanceDef::FnPtrShim(..)  // TODO: debug here
         | InstanceDef::ClosureOnceShim { .. }
         | InstanceDef::DropGlue(..)
-        | InstanceDef::CloneShim(..) => return Ok(()),
+        | InstanceDef::CloneShim(..) => return Err("ignore shim or drop glue"),
     }
 
 

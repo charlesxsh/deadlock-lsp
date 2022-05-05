@@ -137,9 +137,10 @@ pub fn find_in_lifetime<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, lt:&L
                 // FIXME: A not fully substituted drop shim can cause ICEs if one attempts to
                 // have its MIR built. Likely oli-obk just screwed up the `ParamEnv`s, so this
                 // needs some more analysis.
-                if cs.callee.needs_subst() {
-                    continue;
-                }
+                // if cs.callee.needs_subst() {
+                //     continue;
+                // }
+                continue;
             }
         }
 
