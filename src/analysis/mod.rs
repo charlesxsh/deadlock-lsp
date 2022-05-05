@@ -2,7 +2,7 @@ use std::{collections::{HashMap, HashSet}, rc::Rc, cell::RefCell, fs::{File, sel
 
 use log::info;
 use rustc_hir::def_id::{LOCAL_CRATE, LocalDefId, DefId};
-use rustc_middle::{ty::{TyCtxt, Ty, TyKind::FnDef}, mir::{Body, Local, Terminator, StatementKind, TerminatorKind}};
+use rustc_middle::{ty::{TyCtxt, Ty, TyKind::FnDef, InstanceDef, TypeFoldable}, mir::{Body, Local, Terminator, StatementKind, TerminatorKind}};
 use rustc_span::Symbol;
 use serde::{Serialize, Deserialize};
 
@@ -91,11 +91,11 @@ type CSCallFilterSet<'tcx> = HashMap<CriticalSectionCall, &'tcx CSCallFilter<'tc
 
 pub fn find_in_lifetime<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, lt:&Lifetime, callgraph: &call_graph::CallGraph<'tcx>, cs_calls:& mut Vec<CallInCriticalSection>, callchains:Vec<CallSite<'tcx>>, filter_set:&CSCallFilterSet<'tcx>) {
     if callchains.len() > 20 {
-        eprintln!("find_in_lifetime callchain too long, skip");
+        // eprintln!("find_in_lifetime callchain too long, skip");
         return;
     }
-    let symbols: Vec<Symbol> = callchains.iter().map(|c| tcx.item_name(c.callee.def_id())).collect();
-    eprintln!("find_in_lifetime {:?}", symbols);
+    // let symbols: Vec<Symbol> = callchains.iter().map(|c| tcx.item_name(c.callee.def_id())).collect();
+    // eprintln!("find_in_lifetime {:?}", symbols);
     let callsites = &callgraph.callsites[&body.source.def_id()];
     for cs in callsites {
         let callee_id = cs.callee.def_id();
@@ -103,9 +103,43 @@ pub fn find_in_lifetime<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, lt:&L
         // check recursion
         for ch in &callchains {
             if ch.callee.def_id() == callee_id {
-                eprintln!("recursive found: {:?}, skip", tcx.item_name(callee_id));
+                // eprintln!("recursive found: {:?}, skip", tcx.item_name(callee_id));
 
                 continue;
+            }
+        }
+
+        if tcx.is_constructor(cs.callee.def_id()) {
+            continue;
+        }
+
+
+        match cs.callee.def {
+            InstanceDef::Item(_) => {
+                // If there is no MIR available (either because it was not in metadata or
+                // because it has no MIR because it's an extern function), then the inliner
+                // won't cause cycles on this.
+                if !tcx.is_mir_available(callee_id) {
+                    continue;
+                }
+            }
+            // These have no own callable MIR.
+            InstanceDef::Intrinsic(_) | InstanceDef::Virtual(..) => continue,
+            // These have MIR and if that MIR is inlined, substituted and then inlining is run
+            // again, a function item can end up getting inlined. Thus we'll be able to cause
+            // a cycle that way
+            InstanceDef::VtableShim(_)
+            | InstanceDef::ReifyShim(_)
+            | InstanceDef::FnPtrShim(..)
+            | InstanceDef::ClosureOnceShim { .. }
+            | InstanceDef::CloneShim(..) => {}
+            InstanceDef::DropGlue(..) => {
+                // FIXME: A not fully substituted drop shim can cause ICEs if one attempts to
+                // have its MIR built. Likely oli-obk just screwed up the `ParamEnv`s, so this
+                // needs some more analysis.
+                if cs.callee.needs_subst() {
+                    continue;
+                }
             }
         }
 
@@ -167,16 +201,41 @@ pub fn find_in_lifetime<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, lt:&L
 
 pub fn analyze(tcx: TyCtxt) -> Result<AnalysisResult, Box<dyn std::error::Error>>  {
     let crate_name = tcx.crate_name(LOCAL_CRATE).to_string();
-    let trimmed_name = crate_name.trim_matches('\"');
-    let dl_crate = env::var_os("__DL_CRATE").unwrap_or(OsString::from(""));
-    let dl_out = env::var_os("__DL_OUT").unwrap_or(OsString::from(""));
+    let trimmed_name: String = crate_name.trim_matches('\"').to_string();
+    let dl_crate_res = env::var("__DL_CRATE");
+    let dl_black_crates_res = env::var("__DL_BLACK_CRATES");
+    let dl_white_src_prefix_res = env::var("__DL_WHITE_SRC_PREFIX");
+    let dl_out_res = env::var("__DL_OUT");
     let mut result = AnalysisResult {
         calls: Vec::new(),
         critical_sections: Vec::new(),
     };
-    if dl_crate != trimmed_name {
-        return Ok(result)
+    
+    if let Some(c) = dl_crate_res.ok() {
+        if c != trimmed_name {
+                return Ok(result);
+            }
     }
+
+    if let Some(black_list_crates) = dl_black_crates_res.ok() {
+        let bcs = black_list_crates.split(",");
+        for bc in bcs {
+            if bc == trimmed_name {
+                return Ok(result);
+            }
+        }
+    }
+
+    if let Some(dl_white_src_prefix) = dl_white_src_prefix_res.ok() {
+        if let Some(src) = &tcx.sess.local_crate_source_file {
+            let abs_src = src.canonicalize().unwrap();
+            if !abs_src.starts_with(dl_white_src_prefix) {
+                return Ok(result);
+            }
+
+        }
+    }
+
     info!("deadlock analyzing crate {:?}", trimmed_name);
     
     
@@ -190,7 +249,7 @@ pub fn analyze(tcx: TyCtxt) -> Result<AnalysisResult, Box<dyn std::error::Error>
     .copied()
     .collect();
 
-    info!("functions: {}", fn_ids.len());
+    //info!("functions: {}", fn_ids.len());
     let lifetimes = Rc::new(RefCell::new(Lifetimes::new()));
     let mut callgraph = call_graph::CallGraph::new();
     fn_ids
@@ -204,9 +263,9 @@ pub fn analyze(tcx: TyCtxt) -> Result<AnalysisResult, Box<dyn std::error::Error>
     });
 
     // fill critical section into result
-    let mut all_lifetime:Vec<Lifetime> = (&lifetimes.borrow().body_local_lifetimes).values().into_iter().map(|hm|hm.values()).flatten().map(|l| l.clone()).collect();
-    let mut areas:Vec<HighlightArea> = all_lifetime.iter().map(|l| lifetime_to_highlight_area(l)).collect();
-    result.critical_sections.append(&mut areas);
+    // let mut all_lifetime:Vec<Lifetime> = (&lifetimes.borrow().body_local_lifetimes).values().into_iter().map(|hm|hm.values()).flatten().map(|l| l.clone()).collect();
+    // let mut areas:Vec<HighlightArea> = all_lifetime.iter().map(|l| lifetime_to_highlight_area(l)).collect();
+    // result.critical_sections.append(&mut areas);
     
     let mut filter_set: CSCallFilterSet = HashMap::new();
 
@@ -257,19 +316,26 @@ pub fn analyze(tcx: TyCtxt) -> Result<AnalysisResult, Box<dyn std::error::Error>
 
 
         for il in interested_locals {
+            if !local_lifetimes.contains_key(&il) {
+                continue;
+            }
             let lft = &local_lifetimes[&il];
             find_in_lifetime(tcx, body, lft, &callgraph, &mut result.calls, vec![], &filter_set);
         }
 
 
     }
-    if dl_out != "" {
-        let out_file = std::path::Path::new(&dl_out);
+
+    if let Some(out) = dl_out_res.ok() {
+        let out_file = std::path::Path::new(&out);
         fs::create_dir_all(out_file.parent().unwrap())?;
         serde_json::to_writer(&File::create(out_file)?, &result)?;
+    }
+    
+    if result.calls.len() > 0 {
+        info!("calls: {:?}", result.calls);
 
     }
-    //info!("results: {:?}", result);
 
     // for sec in &result.critical_sections {
     //     info!("body Id {:?}", sec.body_id);

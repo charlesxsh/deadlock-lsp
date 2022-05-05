@@ -55,10 +55,10 @@ fn main() {
         }
 
         //Add this to support analyzing no_std libraries
-        rustc_args.push("-Clink-arg=-nostartfiles".to_owned());
+        // rustc_args.push("-Clink-arg=-nostartfiles".to_owned());
 
         // Disable unwind to simplify the CFG
-        rustc_args.push("-Cpanic=abort".to_owned());
+        // rustc_args.push("-Cpanic=abort".to_owned());
         rustc_args.push("-Zmir-opt-level=0".to_owned());
         //info!("{:?}", rustc_args);
         let mut callbacks = CompilerCallbacks{};

@@ -79,7 +79,7 @@ pub fn analyze_callgraph<'tcx, 'a>(tcx: TyCtxt<'tcx>, body: &'a Body<'tcx>, call
                 Ok(()) => {},
                 Err(reason) => {
                     let callee_name = tcx.item_name(callee_def_id);
-                    eprintln!("MIR of {} is unavailable: {}", callee_name, reason);
+                    // eprintln!("MIR of {} is unavailable: {}", callee_name, reason);
                     continue;
                 }
             }
@@ -116,7 +116,12 @@ impl<'tcx, 'a> Visitor<'tcx> for BodyCallVisitor<'tcx, 'a> {
             if let FnDef(def_id, substs) = *func_ty.kind() {
                 // To resolve an instance its substs have to be fully normalized.
                 let param_env = self.tcx.param_env_reveal_all_normalized(self.body.source.def_id());
-                let substs = self.tcx.normalize_erasing_regions(param_env, substs);
+                let substs_res = self.tcx.try_normalize_erasing_regions(param_env, substs);
+                if substs_res.is_err() {
+                    return self.super_terminator(terminator, location);
+                }
+                let substs = substs_res.unwrap();
+
                 let result =
                     Instance::resolve(self.tcx, param_env, def_id, substs);
 

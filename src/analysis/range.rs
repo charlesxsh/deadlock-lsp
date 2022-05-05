@@ -245,7 +245,7 @@ fn parse_span_str(span_str: &str) -> RangeInFile {
 pub fn parse_span(span: &Span) -> (String, RangeInFile) {
     let span_str = format!("{:?}", span);
     let labels: Vec<&str> = span_str.split(":").collect();
-    assert!(labels.len() == 5);
+    assert!(labels.len() == 5, "{}", span_str);
     let filename = labels[0];
     let mut abs_file = std::fs::canonicalize(&filename).unwrap();
    
