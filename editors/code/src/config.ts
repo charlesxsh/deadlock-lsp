@@ -11,7 +11,15 @@ export class Config {
     }
 
     get serverPath() {
-        return this.get<null | string>("server.path") ?? this.get<null | string>("serverPath");
+        return this.get<null | string>("serverPath");
+    }
+
+    get dyldLibPath() {
+        return this.get<null | string>("dyldLibPath");
+    }
+
+    get luckbud() {
+        return this.get<null | string>("luckbud");
     }
     
     private get cfg(): vscode.WorkspaceConfiguration {

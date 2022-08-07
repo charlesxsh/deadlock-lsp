@@ -1,0 +1,7 @@
+{
+    "rust-deadlock-dectector": {
+        "serverPath":"/home/szx5097/code/deadlock-lsp/target/debug/deadlock-lsp",
+        "dyldLibPath":"/home/szx5097/snap/rustup/common/rustup/toolchains/nightly-2022-06-14-x86_64-unknown-linux-gnu",
+        "luckbud":"/home/szx5097/code/luckbud/target/debug/lockbud"
+    }
+}

@@ -29,8 +29,12 @@ export class Context {
         workspace: Workspace,
     ): Promise<Context> {
         const client = createClient(serverPath, {
-            "DYLD_LIBRARY_PATH":"/Users/xsh/.rustup/toolchains/nightly-2022-01-27-x86_64-apple-darwin/lib",
-            "RUST_LOG":"lsp_server=debug"
+            // for mac os
+            "DYLD_LIBRARY_PATH": config.dyldLibPath,
+            // for linux
+            "LD_LIBRARY_PATH": config.dyldLibPath,
+            "RUST_LOG":"lsp_server=debug",
+            __DL_RUSTC:config.luckbud
         });
         const ctx = new Context(config, extCtx, client, serverPath);
 
