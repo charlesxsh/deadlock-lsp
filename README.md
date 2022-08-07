@@ -19,3 +19,7 @@ $ cargo install --path .
 ```
 
 ### Install deadlock-lsp
+
+
+## License
+The lockbud Project is dual-licensed under Apache 2.0 and MIT terms.
