@@ -165,10 +165,10 @@ fn run_analysis_in_dir(dir: &str, out: &String) {
     let mut cmd = cargo();
 
     let dl_rustc = env::var_os("__DL_RUSTC").unwrap_or(OsString::from(""));
-    cmd.env("RUSTC", dl_rustc);
+    cmd.env("RUSTC_WRAPPER", dl_rustc);
     cmd.env("__DL_CRATE", crate_name.unwrap_or("".to_string()));
     cmd.env("__DL_OUT", out);
-    cmd.arg("check");
+    cmd.arg("build");
     cmd.current_dir(ws_dir);
     cmd.stdout(Stdio::null());
     eprintln!("{:?} in {:?}", cmd, ws_dir);
