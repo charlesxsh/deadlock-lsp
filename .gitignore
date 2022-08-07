@@ -3,3 +3,5 @@
 /editors/code/node_modules
 
 examples/*/target
+
+Cargo.lock
