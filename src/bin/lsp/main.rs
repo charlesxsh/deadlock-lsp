@@ -1,11 +1,10 @@
 use std::{error::Error, process::{Command, Stdio}, env, ffi::OsString, fs};
 
-use log::info;
 use lsp_types::{
-    request::{GotoDefinition, DocumentHighlightRequest}, GotoDefinitionResponse, InitializeParams, ServerCapabilities, OneOf, SelectionRangeProviderCapability, HoverProviderCapability, TextDocumentSyncCapability, TextDocumentSyncOptions, SaveOptions, notification::DidSaveTextDocument, DocumentHighlight, Range, Position, DocumentHighlightKind, DocumentHighlightParams,
+    request::{DocumentHighlightRequest}, InitializeParams, ServerCapabilities, OneOf, SelectionRangeProviderCapability, TextDocumentSyncCapability, TextDocumentSyncOptions, SaveOptions, notification::DidSaveTextDocument,
 };
 
-use lsp_server::{Connection, Message, Request, RequestId, Response, Notification, ExtractError};
+use lsp_server::{Connection, Message, Request, RequestId, Notification, ExtractError};
 use serde::Deserialize;
 use deadlock_lsp::lsp::global_ctxt;
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
@@ -99,7 +98,7 @@ fn main_loop(
                                 let ws = &workspaces[0];
                                 let analysis_out = ws.uri.to_file_path().unwrap().join(".rda/a.json")
                                 .to_str().unwrap().to_string();
-                                std::fs::remove_file(&analysis_out);
+                                let _ = std::fs::remove_file(&analysis_out);
                                 run_analysis_in_dir(ws.uri.to_file_path().unwrap().to_str().unwrap(), &analysis_out);
                                 ctx.update_from_json(&analysis_out);
                                 ctx.send_diagnoistic();

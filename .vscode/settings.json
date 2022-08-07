@@ -1,4 +1,6 @@
 {
-    "rust-analyzer.rustcSource": "discover",
-    "rust-analyzer.diagnostics.disabled": ["macro-error"]
+    "rust-analyzer.diagnostics.disabled": [
+        "macro-error"
+    ],
+    "rust-analyzer.rustc.source": "discover"
 }
