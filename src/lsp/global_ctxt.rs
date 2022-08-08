@@ -37,7 +37,9 @@ pub struct CallInCriticalSection {
 pub enum CriticalSectionCall {
     ChSend,
     ChRecv,
-    CondVarWait
+    CondVarWait,
+    DoubleLock,
+    ConflictLock
 }
 
 impl Display for CriticalSectionCall {
@@ -46,6 +48,8 @@ impl Display for CriticalSectionCall {
             CriticalSectionCall::ChSend => write!(f, "{}", "channel send"),
             CriticalSectionCall::ChRecv => write!(f, "{}", "channel recv"),
             CriticalSectionCall::CondVarWait =>  write!(f, "{}", "conditional variable wait"),
+            CriticalSectionCall::DoubleLock =>  write!(f, "{}", "double lock"),
+            CriticalSectionCall::ConflictLock =>  write!(f, "{}", "conflict lock"),
         }
     }
 }
