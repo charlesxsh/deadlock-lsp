@@ -56,7 +56,8 @@ and we can use it to develop the project with ".vscode/setting.json".
 
 ## Demonstration
 
-We record a demonstration video, which can be found at [youtube](https://www.youtube.com/watch?v=FidSnF_I2uE).
+We record a demonstration video to showcase the installation and the usage. 
+The video is relased on [youtube](https://www.youtube.com/watch?v=FidSnF_I2uE).
 
 ## License
 The lockbud Project is dual-licensed under Apache 2.0 and MIT terms.
