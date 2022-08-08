@@ -54,6 +54,9 @@ luckbud is the path of the compiled lockbud.
 the "Start Debugging" button to "Run Extension". A new VSCode window is poped out. The plugin is enabled in the window
 and we can use it to develop the project with ".vscode/setting.json". 
 
+## Demonstration
+
+We record a demonstration video, which can be found at [youtube](https://www.youtube.com/watch?v=FidSnF_I2uE).
 
 ## License
 The lockbud Project is dual-licensed under Apache 2.0 and MIT terms.
