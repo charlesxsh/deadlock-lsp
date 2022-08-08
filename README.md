@@ -20,7 +20,7 @@ $ cargo install --path .
 
 ### Install deadlock-lsp and lauch the plugin
 
-(a) We first need to download and install deadlock-lsp. 
+(a) We first need to download and build deadlock-lsp. 
 ```
 $ git clone https://github.com/charlesxsh/deadlock-lsp.git
 $ cd deadlock-lsp
