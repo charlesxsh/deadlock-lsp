@@ -60,4 +60,4 @@ We record a demonstration video to showcase the installation and the usage.
 The video is relased on [youtube](https://www.youtube.com/watch?v=FidSnF_I2uE).
 
 ## License
-The lockbud Project is dual-licensed under Apache 2.0 and MIT terms.
+This Project is licensed under BSD-3-Clause-Clear license.
