@@ -4,9 +4,7 @@ import {
 	Executable,
 	LanguageClient,
 	LanguageClientOptions,
-	ServerOptions,
-	Trace,
-	TransportKind
+	ServerOptions
   } from 'vscode-languageclient/node';
 import * as vscode from 'vscode';
 

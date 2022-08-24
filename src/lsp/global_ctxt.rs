@@ -6,9 +6,14 @@ use lsp_server::Message;
 use lsp_server::{RequestId};
 use crossbeam_channel::{Sender};
 
-use super::lockbud_ty::{AnalysisResult, HighlightArea};
+use super::lockbud_ty::{AnalysisResult, HighlightArea, RangeInFile};
 
-type IndexedHighlights = HashMap<String, Vec<Vec<DocumentHighlight>>>;
+pub struct DocHighlightsWithTrigger {
+    areas: Vec<DocumentHighlight>,
+    triggers: Vec<RangeInFile>
+}
+
+type IndexedHighlights = HashMap<String, Vec< DocHighlightsWithTrigger > >;
 pub struct GlobalCtxt {
     pub result: Option<AnalysisResult>,
     pub sender: Sender<Message>,
@@ -49,7 +54,7 @@ fn raw_highlight_to_doc_highlights(raw: &Vec<HighlightArea>) -> IndexedHighlight
         if !ih.contains_key(filename) {
             ih.insert(filename.to_string(), Vec::new());
         }
-        ih.get_mut(filename).unwrap().push(highlights);
+        ih.get_mut(filename).unwrap().push(DocHighlightsWithTrigger { areas: highlights, triggers: r.triggers.clone() } );
         
     }
     return ih;
@@ -81,21 +86,27 @@ impl GlobalCtxt {
 
 
     fn get_highlights(&self, file:&String, pos:&Position) -> Option<Vec<DocumentHighlight>> {
+        eprintln!("finding highlight at {:?} {:?}", file, pos);
+
         match self.file_highlights.get(file) {
             Some(areas) => {
+
                 for area in areas {
-                    for h in area {
-                        if h.range.start.line <= pos.line && 
-                        h.range.start.character <= pos.character &&
-                        h.range.end.line >= pos.line &&
-                        h.range.end.character >= pos.character {
-                            return Some(area.to_vec());
+                    for h in &area.triggers {
+                        if h.1 <= pos.line+1 && 
+                        h.2 <= pos.character+1 &&
+                        h.3 >= pos.line+1 &&
+                        h.4 >= pos.character+1 {
+                            eprintln!("found highlight with {:?}", area.triggers);
+
+                            return Some(area.areas.to_vec());
                         }
                     }
                 }
             },
             None => {},
         }
+        eprintln!("no found highlight");
 
         return None
     }
@@ -110,7 +121,6 @@ impl GlobalCtxt {
         
                 match self.sender.send(res.into()) {
                     Ok(()) => {
-                        eprintln!("sent highlight!")
                     },
                     Err(err) => {
                         eprintln!("send highlight error: {:?}", err);
@@ -145,7 +155,7 @@ impl GlobalCtxt {
                 code: None,
                 code_description: None,
                 source: Some("rust-deadlock-detector".to_string()),
-                message: format!("{} in critical section", call.ty),
+                message: format!("{:?} in critical section", call.ty),
                 related_information: None,
                 tags: None,
                 data: None,
@@ -191,8 +201,6 @@ impl GlobalCtxt {
         
         match self.get_diagnoistics() {
             Some(file_diags) => {
-                eprintln!("found diags {}", file_diags.len());
-
                 for (f, d) in file_diags {
                     eprintln!("found {} diags for file {}",d.len(), f);
                     let uri = lsp_types::Url::from_file_path(f).unwrap();
@@ -213,7 +221,6 @@ impl GlobalCtxt {
         let not = lsp_server::Notification::new(N::METHOD.to_string(), params);
         match self.sender.send(not.into()) {
             Ok(_) => {
-                eprintln!("send noti successfully");
             },
             Err(err) => {
                 eprintln!("send noti errorr: {}", err);

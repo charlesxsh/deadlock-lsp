@@ -41,4 +41,17 @@ export class Context {
 	    client.start();
         return ctx;
     }
+
+    registerCommand(name: string, factory: (ctx: Context) => Cmd) {
+        const fullName = `rust-deadlock-detector.${name}`;
+        const cmd = factory(this);
+        const d = vscode.commands.registerCommand(fullName, cmd);
+        this.pushCleanup(d);
+    }
+
+    pushCleanup(d: vscode.Disposable) {
+        this.extCtx.subscriptions.push(d);
+    }
 }
+
+export type Cmd = (...args: any[]) => unknown;

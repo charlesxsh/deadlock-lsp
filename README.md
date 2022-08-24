@@ -35,7 +35,7 @@ The content of "setting.json" is shown as follows:
 
 ```
 {
-    "rust-deadlock-dectector": {
+    "rust-deadlock-detector": {
         "serverPath": "${PATH_TO_THE_EXECUTABLE_OF_DEADLOCK-LSP}",
         "dyldLibPath": "${PATH_TO_RUSTUP}/toolchains/nightly-2022-06-14-x86_64-apple-darwin/lib",
         "luckbud": "${PATH_TO_THE_EXECUTABLE_OF_LOCKBUD}""

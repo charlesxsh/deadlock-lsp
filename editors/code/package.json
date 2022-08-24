@@ -17,8 +17,9 @@
 	"contributes": {
 		"commands": [
 			{
-				"command": "rust-deadlock.helloWorld",
-				"title": "Hello World"
+				"command": "rust-deadlock.reload",
+				"title": "Reload",
+				"category": "rust-deadlock"
 			}
 		],
 		"configuration": {

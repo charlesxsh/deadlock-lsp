@@ -2,7 +2,7 @@
 import * as vscode from 'vscode';
 
 export class Config {
-    readonly rootSection = "rust-deadlock-dectector";
+    readonly rootSection = "rust-deadlock-detector";
     constructor(ctx: vscode.ExtensionContext) {
        
     }

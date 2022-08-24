@@ -16,7 +16,7 @@ pub enum Suspicious {
 }
 
 // filename, start line & col, end line & col
-type RangeInFile = (String, u32, u32, u32, u32);
+pub type RangeInFile = (String, u32, u32, u32, u32);
 
 
 #[derive(Debug, Serialize, Deserialize, Hash, PartialEq, Eq)]
