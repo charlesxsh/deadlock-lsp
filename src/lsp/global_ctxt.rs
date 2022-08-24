@@ -1,12 +1,12 @@
-use std::fmt::Display;
 use std::{io::BufReader, error::Error, fs::File, collections::HashMap};
 
 use lsp_types::{ Range, DocumentHighlightKind, Position, DocumentHighlight,DocumentHighlightParams, DiagnosticRelatedInformation, Location, Diagnostic, DiagnosticSeverity, PublishDiagnosticsParams};
-use serde::{Serialize, Deserialize};
 
 use lsp_server::Message;
 use lsp_server::{RequestId};
 use crossbeam_channel::{Sender};
+
+use super::lockbud_ty::{AnalysisResult, HighlightArea};
 
 type IndexedHighlights = HashMap<String, Vec<Vec<DocumentHighlight>>>;
 pub struct GlobalCtxt {
@@ -15,40 +15,6 @@ pub struct GlobalCtxt {
     pub file_highlights: IndexedHighlights
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct HighlightArea {
-    // filename, start line & col, end line & col
-    pub ranges: Vec<(String, u32, u32, u32, u32)>
-}
-#[derive(Debug, Serialize, Deserialize)]
-pub struct AnalysisResult {
-    pub calls: Vec<CallInCriticalSection>,
-    pub critical_sections: Vec<HighlightArea>
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CallInCriticalSection {
-    // filename, start line & col, end line & col
-    pub callchains: Vec<(String, u32, u32, u32, u32)>,
-    pub ty: CriticalSectionCall,
-}
-
-#[derive(Hash, Eq, PartialEq, Copy, Clone, Serialize, Deserialize, Debug)]
-pub enum CriticalSectionCall {
-    ChSend,
-    ChRecv,
-    CondVarWait
-}
-
-impl Display for CriticalSectionCall {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CriticalSectionCall::ChSend => write!(f, "{}", "channel send"),
-            CriticalSectionCall::ChRecv => write!(f, "{}", "channel recv"),
-            CriticalSectionCall::CondVarWait =>  write!(f, "{}", "conditional variable wait"),
-        }
-    }
-}
 
 
 fn get_analysis_result(p: &String)->Result<AnalysisResult, Box<dyn Error>> {
