@@ -18,8 +18,46 @@ $ rustup component add llvm-tools-preview
 $ cargo install --path .
 ```
 
-### Install deadlock-lsp
+### Install deadlock-lsp and lauch the plugin
 
+(a) We first need to download and build deadlock-lsp. 
+```
+$ git clone https://github.com/charlesxsh/deadlock-lsp.git
+$ cd deadlock-lsp
+$ cargo build
+$ cd editors/code
+$ npm i
+```
+
+(b) We then add a directory named ".vscode" under the root directory of the project we will edit and 
+create a file named "setting.json" under the directory. 
+The content of "setting.json" is shown as follows:
+
+```
+{
+    "rust-deadlock-dectector": {
+        "serverPath": "${PATH_TO_THE_EXECUTABLE_OF_DEADLOCK-LSP}",
+        "dyldLibPath": "${PATH_TO_RUSTUP}/toolchains/nightly-2022-06-14-x86_64-apple-darwin/lib",
+        "luckbud": "${PATH_TO_THE_EXECUTABLE_OF_LOCKBUD}""
+    }
+}
+
+```
+serverPath is the path of the compiled language server. 
+
+The value of dyldLibPath can be figured out by running command "cargo rustc -Zunstable-options --print  sysroot"
+under the root directory of lockbud and appending "/lib" to the command output. 
+
+luckbud is the path of the compiled lockbud. 
+
+(c) In the end, we use VScode to open the folder of deadlock-lsp, click the "Run and Debug" button on the left, and click 
+the "Start Debugging" button to "Run Extension". A new VSCode window is poped out. The plugin is enabled in the window
+and we can use it to develop the project with ".vscode/setting.json". 
+
+## Demonstration
+
+We record a demonstration video to showcase the installation and the usage. 
+The video is relased on [youtube](https://www.youtube.com/watch?v=FidSnF_I2uE).
 
 ## License
-The lockbud Project is dual-licensed under Apache 2.0 and MIT terms.
+This Project is licensed under BSD-3-Clause-Clear license.
