@@ -6,7 +6,7 @@ use lsp_server::Message;
 use lsp_server::{RequestId};
 use crossbeam_channel::{Sender};
 
-use super::lockbud_ty::{AnalysisResult, HighlightArea, RangeInFile};
+use super::lockbud_ty::{AnalysisResult, HighlightArea, RangeInFile, SuspiciousCall};
 
 pub struct DocHighlightsWithTrigger {
     areas: Vec<DocumentHighlight>,
@@ -14,6 +14,8 @@ pub struct DocHighlightsWithTrigger {
 }
 
 type IndexedHighlights = HashMap<String, Vec< DocHighlightsWithTrigger > >;
+type IndexedDiagnostics = HashMap<String, Vec< Diagnostic > >;
+
 pub struct GlobalCtxt {
     pub result: Option<AnalysisResult>,
     pub sender: Sender<Message>,
@@ -54,12 +56,70 @@ fn raw_highlight_to_doc_highlights(raw: &Vec<HighlightArea>) -> IndexedHighlight
         if !ih.contains_key(filename) {
             ih.insert(filename.to_string(), Vec::new());
         }
-        ih.get_mut(filename).unwrap().push(DocHighlightsWithTrigger { areas: highlights, triggers: r.triggers.clone() } );
+
+        let zero_based_triggers: Vec<RangeInFile> = r.triggers.iter().map(|t| (t.0.clone(), t.1-1, t.2-1, t.3-1, t.4-1)).collect();
+        ih.get_mut(filename).unwrap().push(DocHighlightsWithTrigger { areas: highlights, triggers: zero_based_triggers } );
         
     }
     return ih;
 }
 
+
+fn suspicious_calls_to_diagnostics(calls: &Vec<SuspiciousCall>) ->IndexedDiagnostics {
+    let mut result: IndexedDiagnostics = HashMap::new();
+    for call in calls {
+        if call.callchains.len() == 0 {
+            eprintln!("unexpected callchain found {:?}", call);
+        }
+        let target = call.callchains.last().unwrap();
+        let relateds = &call.callchains[..call.callchains.len()-1];
+        let mut d = Diagnostic {
+            range: lsp_types::Range { 
+                start: Position { line: target.1-1, character: target.2-1}, 
+                end: Position { line: target.3-1, character: target.4-1 }
+            },
+            severity: Some(DiagnosticSeverity::INFORMATION),
+            code: None,
+            code_description: None,
+            source: Some("rust-deadlock-detector".to_string()),
+            message: format!("{:?} in critical section", call.ty),
+            related_information: None,
+            tags: None,
+            data: None,
+        };
+
+      
+        let drelateds:Vec<DiagnosticRelatedInformation> = relateds.iter().map(|r|{
+            let uri = lsp_types::Url::from_file_path(&r.0).unwrap();
+
+            DiagnosticRelatedInformation {
+                location: Location {
+                    uri,
+                    range: lsp_types::Range { 
+                        start: Position { line: r.1-1, character: r.2-1}, 
+                        end: Position { line: r.3-1, character: r.4-1 }
+                    }
+                },
+                message: "may contains blocking call in critical section".to_string(),
+            }
+        })
+        .collect();
+
+        if drelateds.len() > 0 {
+            d.related_information = Some(drelateds);
+        }
+
+
+        if !result.contains_key(&target.0) {
+            result.insert(target.0.clone(), Vec::new());
+        }
+        result.get_mut(&target.0).unwrap().push(d);
+        
+
+    }
+
+    result
+}
 impl GlobalCtxt {
     pub fn new(sender: Sender<Message>) -> Self {
         Self {
@@ -93,10 +153,10 @@ impl GlobalCtxt {
 
                 for area in areas {
                     for h in &area.triggers {
-                        if h.1 <= pos.line+1 && 
-                        h.2 <= pos.character+1 &&
-                        h.3 >= pos.line+1 &&
-                        h.4 >= pos.character+1 {
+                        if h.1 <= pos.line && 
+                        h.2 <= pos.character &&
+                        h.3 >= pos.line &&
+                        h.4 >= pos.character {
                             eprintln!("found highlight with {:?}", area.triggers);
 
                             return Some(area.areas.to_vec());
@@ -139,57 +199,8 @@ impl GlobalCtxt {
             Some(r) => r,
             None => return None,
         };
-        let mut result: HashMap<String, Vec<Diagnostic>> = HashMap::new();
-        for call in &analysis.calls {
-            if call.callchains.len() == 0 {
-                eprintln!("unexpected callchain found {:?}", call);
-            }
-            let target = call.callchains.last().unwrap();
-            let relateds = &call.callchains[..call.callchains.len()-1];
-            let mut d = Diagnostic {
-                range: lsp_types::Range { 
-                    start: Position { line: target.1-1, character: target.2-1}, 
-                    end: Position { line: target.3-1, character: target.4-1 }
-                },
-                severity: Some(DiagnosticSeverity::INFORMATION),
-                code: None,
-                code_description: None,
-                source: Some("rust-deadlock-detector".to_string()),
-                message: format!("{:?} in critical section", call.ty),
-                related_information: None,
-                tags: None,
-                data: None,
-            };
-
-          
-            let drelateds:Vec<DiagnosticRelatedInformation> = relateds.iter().map(|r|{
-                let uri = lsp_types::Url::from_file_path(&r.0).unwrap();
-
-                DiagnosticRelatedInformation {
-                    location: Location {
-                        uri,
-                        range: lsp_types::Range { 
-                            start: Position { line: r.1-1, character: r.2-1}, 
-                            end: Position { line: r.3-1, character: r.4-1 }
-                        }
-                    },
-                    message: "may contains blocking call in critical section".to_string(),
-                }
-            })
-            .collect();
-
-            if drelateds.len() > 0 {
-                d.related_information = Some(drelateds);
-            }
-
-
-            if !result.contains_key(&target.0) {
-                result.insert(target.0.clone(), Vec::new());
-            }
-            result.get_mut(&target.0).unwrap().push(d);
-            
-
-        }
+        
+        let result = suspicious_calls_to_diagnostics(&analysis.calls);
         return Some(result);
     }
     pub fn send_message(&mut self) {
@@ -228,4 +239,144 @@ impl GlobalCtxt {
         }
     }
 
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::lsp::lockbud_ty::Suspicious;
+
+    // Note this useful idiom: importing names from outer (for mod tests) scope.
+    use super::*;
+
+    /// 
+    /// The test make sures the files and their highlight areas are properly
+    /// handled.
+    ///
+    #[test]
+    fn test_raw_highlight_to_doc_highlights_file_index() {
+        
+        
+        let raw_highlights = vec![
+            HighlightArea { triggers: vec![
+                ("file1.rs".to_string(), 1, 2, 3, 4)
+            ], ranges: vec![
+                ("file1.rs".to_string(), 5, 6, 7, 8)
+            ] },
+
+            HighlightArea { triggers: vec![
+                ("file2.rs".to_string(), 1, 2, 3, 4)
+            ], ranges: vec![
+                ("file2.rs".to_string(), 5, 6, 7, 8)
+            ] }
+        ];
+        let res = raw_highlight_to_doc_highlights(&raw_highlights);
+
+        assert_eq!(2, res.len());
+        assert_eq!(1, res.get("file1.rs").unwrap().len());
+        assert_eq!(1, res.get("file2.rs").unwrap().len());
+        
+        
+    }
+
+    /// 
+    /// The test make sures the line and column numbers are properly
+    /// handled considered to the difference of source code (1 based) and LSP (0 based)
+    ///
+    #[test]
+    fn test_raw_highlight_to_doc_highlights_linecol() {
+        
+        
+        let raw_highlights = vec![
+            HighlightArea { triggers: vec![
+                ("file1.rs".to_string(), 1, 2, 3, 4)
+            ], ranges: vec![
+                ("file1.rs".to_string(), 5, 6, 7, 8)
+            ] },
+
+            HighlightArea { triggers: vec![
+                ("file2.rs".to_string(), 1, 2, 3, 4)
+            ], ranges: vec![
+                ("file2.rs".to_string(), 5, 6, 7, 8)
+            ] }
+        ];
+        let res = raw_highlight_to_doc_highlights(&raw_highlights);
+
+        let highlight_with_trigger = res.get("file1.rs").unwrap();
+        let trigger = highlight_with_trigger.first().unwrap().triggers.first().unwrap();
+        assert_eq!(trigger.0, "file1.rs");
+        assert_eq!(trigger.1, 0);
+        assert_eq!(trigger.2, 1);
+        assert_eq!(trigger.3, 2);
+        assert_eq!(trigger.4, 3);
+        
+        let area = highlight_with_trigger.first().unwrap().areas.first().unwrap();
+
+        assert_eq!(area.range.start.line, 4);
+        assert_eq!(area.range.start.character, 5);
+        assert_eq!(area.range.end.line, 6);
+        assert_eq!(area.range.end.character, 7);
+        
+    }
+
+   
+    ///
+    /// Test suspicious calls (with callchain depth 1) dump by luckbud can be properly transfered to LSP's diagnostic.
+    /// 
+    #[test]
+    fn test_suspicious_calls_to_diagnostics_one_callchain() {
+        let mut calls: Vec<SuspiciousCall> = Vec::new();
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file1.rs".to_string(), 4, 5, 6, 7)
+        ], ty: Suspicious::DoubleLock });
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file1.rs".to_string(), 6, 7, 8, 9)
+        ], ty: Suspicious::ConflictLock });
+        let result = suspicious_calls_to_diagnostics(&calls);
+        
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get("/some/file1.rs").unwrap().len(), 2);
+
+        let diags = result.get("/some/file1.rs").unwrap();
+        let first_diag = diags.first().unwrap();
+        assert_eq!(first_diag.range.start.line, 3);
+        assert_eq!(first_diag.range.start.character, 4);
+        assert_eq!(first_diag.range.end.line, 5);
+        assert_eq!(first_diag.range.end.character, 6);
+    }
+
+    ///
+    /// Test suspicious calls (with callchain depth more than 1) dump by luckbud can be properly transfered to LSP's diagnostic.
+    /// 
+    #[test]
+    fn test_suspicious_calls_to_diagnostics() {
+        let mut calls: Vec<SuspiciousCall> = Vec::new();
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file1.rs".to_string(), 1, 2, 3, 4),
+            ("/some/file1.rs".to_string(), 4, 5, 6, 7)
+        ], ty: Suspicious::DoubleLock });
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file1.rs".to_string(), 2, 3, 4, 5),
+            ("/some/file1.rs".to_string(), 6, 7, 8, 9)
+        ], ty: Suspicious::ConflictLock });
+        let result = suspicious_calls_to_diagnostics(&calls);
+        
+        assert_eq!(result.len(), 1);
+        assert_eq!(result.get("/some/file1.rs").unwrap().len(), 2);
+
+        let diags = result.get("/some/file1.rs").unwrap();
+        let first_diag = diags.first().unwrap();
+        assert_eq!(first_diag.range.start.line, 3);
+        assert_eq!(first_diag.range.start.character, 4);
+        assert_eq!(first_diag.range.end.line, 5);
+        assert_eq!(first_diag.range.end.character, 6);
+
+        let first_related:&Vec<DiagnosticRelatedInformation> = first_diag.related_information.as_ref().unwrap();
+        let first_loc = &first_related.first().unwrap().location;
+        assert_eq!(first_loc.range.start.line, 0);
+        assert_eq!(first_loc.range.start.character, 1);
+        assert_eq!(first_loc.range.end.line, 2);
+        assert_eq!(first_loc.range.end.character, 3);
+    }
+    
 }

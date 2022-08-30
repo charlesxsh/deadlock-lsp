@@ -1,4 +1,4 @@
-use std::{error::Error, process::{Command, Stdio}, env, ffi::OsString, fs};
+use std::{error::Error, process::{Command, Stdio}, env, ffi::OsString, fs, time::Instant};
 
 use lsp_types::{
     request::{DocumentHighlightRequest}, InitializeParams, ServerCapabilities, OneOf, SelectionRangeProviderCapability, TextDocumentSyncCapability, TextDocumentSyncOptions, SaveOptions, notification::DidSaveTextDocument,
@@ -94,7 +94,8 @@ fn main_loop(
                         eprintln!("connection.sender {:?}", connection.sender.len());
                         match &_params.workspace_folders {
                             Some(workspaces) => {
-                                
+                                let start = Instant::now();
+
                                 let ws = &workspaces[0];
                                 let analysis_out = ws.uri.to_file_path().unwrap().join(".rda/a.json")
                                 .to_str().unwrap().to_string();
@@ -102,6 +103,10 @@ fn main_loop(
                                 run_analysis_in_dir(ws.uri.to_file_path().unwrap().to_str().unwrap(), &analysis_out);
                                 ctx.update_from_json(&analysis_out);
                                 ctx.send_diagnoistic();
+
+                                let elapsed_time = start.elapsed().as_millis();
+                                eprintln!("DidSaveTextDocument took {}ms", elapsed_time);
+
                             },
                             None => {},
                         }

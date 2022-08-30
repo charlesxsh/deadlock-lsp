@@ -1,7 +1,6 @@
 // FIXME: this file should be synced with luckbud's src/cs/diagnostics.rs file.
 // Ideally this project should either put together with luckbud or add luckbud as dependency at Cargo.toml, or extract interaces as independent crate.
 
-use std::collections::HashSet;
 use serde::{Serialize, Deserialize};
 
 
@@ -34,6 +33,6 @@ pub struct HighlightArea {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AnalysisResult {
-    pub calls: HashSet<SuspiciousCall>,
+    pub calls: Vec<SuspiciousCall>,
     pub critical_sections: Vec<HighlightArea>
 }
