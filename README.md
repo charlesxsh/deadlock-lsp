@@ -12,6 +12,7 @@ Currently, lockbud supports rustc 1.63.0-nightly (1f34da9ec 2022-06-14)
 ```
 $ git clone https://github.com/BurtonQin/lockbud.git
 $ cd lockbud
+$ git checkout web3
 $ rustup component add rust-src
 $ rustup component add rustc-dev
 $ rustup component add llvm-tools-preview
@@ -31,7 +32,7 @@ $ npm i
 
 (b) We then add a directory named ".vscode" under the root directory of the project we will edit and 
 create a file named "setting.json" under the directory. 
-The content of "setting.json" is shown as follows:
+The content of "settings.json" is shown as follows:
 
 ```
 {
