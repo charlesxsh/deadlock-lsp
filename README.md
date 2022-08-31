@@ -31,7 +31,7 @@ $ npm i
 ```
 
 (b) We then add a directory named ".vscode" under the root directory of the project we will edit and 
-create a file named "setting.json" under the directory. 
+create a file named "settings.json" under the directory. 
 The content of "settings.json" is shown as follows:
 
 ```
@@ -53,7 +53,7 @@ luckbud is the path of the compiled lockbud.
 
 (c) In the end, we use VScode to open the folder of deadlock-lsp, click the "Run and Debug" button on the left, and click 
 the "Start Debugging" button to "Run Extension". A new VSCode window is poped out. The plugin is enabled in the window
-and we can use it to develop the project with ".vscode/setting.json". 
+and we can use it to develop the project with ".vscode/settings.json". 
 
 ## Demonstration
 

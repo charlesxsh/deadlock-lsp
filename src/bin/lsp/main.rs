@@ -1,4 +1,4 @@
-use std::{error::Error, process::{Command, Stdio}, env, ffi::OsString, fs, time::Instant};
+use std::{error::Error, process::{Command, Stdio}, env, ffi::OsString, fs, time::Instant, path::PathBuf, string};
 
 use lsp_types::{
     request::{DocumentHighlightRequest}, InitializeParams, ServerCapabilities, OneOf, SelectionRangeProviderCapability, TextDocumentSyncCapability, TextDocumentSyncOptions, SaveOptions, notification::DidSaveTextDocument,
@@ -46,7 +46,36 @@ fn main_loop(
 ) -> Result<(), Box<dyn Error + Sync + Send>> {
     let _params: InitializeParams = serde_json::from_value(params).unwrap();
     let mut ctx = global_ctxt::GlobalCtxt::new(connection.sender.clone());
-    
+    if let Some(client_info) = _params.client_info {
+        eprintln!("client_info: {:?}", client_info);
+    }
+
+    let workspace_roots: Vec<PathBuf> = _params.workspace_folders.iter()
+    .flat_map(|folders| folders.iter())
+    .flat_map(|folder|folder.uri.to_file_path().ok())
+    .collect();
+
+    eprintln!("workspace roots: {:?}", workspace_roots);
+
+    for workspace in &workspace_roots {
+        let start = Instant::now();
+
+        eprintln!("init at workspace {:?}", workspace);
+
+        let analysis_out = workspace.join(".rda/a.json")
+        .to_str().unwrap().to_string();
+        let _ = std::fs::remove_file(&analysis_out);
+        let wsstr = workspace.to_str().unwrap();
+        cargo_clean(wsstr);
+        run_analysis_in_dir(wsstr, &analysis_out);
+        ctx.update_from_json(&analysis_out);
+        ctx.send_diagnoistic();
+
+        let elapsed_time = start.elapsed().as_millis();
+        eprintln!("init at workspace {:?} took {}ms", workspace, elapsed_time);
+
+    }
+
     for msg in &connection.receiver {
         // eprintln!("got msg: {:?}", msg);
         match msg {
@@ -54,18 +83,6 @@ fn main_loop(
                 if connection.handle_shutdown(&req)? {
                     return Ok(());
                 }
-                // eprintln!("got request: {:?}", req);
-                // match cast::<GotoDefinition>(&req) {
-                //     Ok((id, params)) => {
-                //         eprintln!("got goto def request #{}: {:?}", id, params);
-                //         let result = Some(GotoDefinitionResponse::Array(Vec::new()));
-                //         let result = serde_json::to_value(&result).unwrap();
-                //         let resp = Response { id, result: Some(result), error: None };
-                //         connection.sender.send(Message::Response(resp))?;
-                //         continue;
-                //     }
-                //     Err(err) => {},
-                // };
                 
                 match cast::<DocumentHighlightRequest>(req) {
                     Ok((id, params)) => {
@@ -177,6 +194,20 @@ fn run_analysis_in_dir(dir: &str, out: &String) {
     cmd.current_dir(ws_dir);
     cmd.stdout(Stdio::null());
     eprintln!("{:?} in {:?}", cmd, ws_dir);
+    let exit_status = cmd
+        .spawn()
+        .expect("could not run cargo")
+        .wait()
+        .expect("failed to wait for cargo?");
+    if !exit_status.success() {
+        eprintln!("cargo error code: {}", exit_status.code().unwrap_or(-1));
+    };
+}
+
+fn cargo_clean(cwd: &str) {
+    let mut cmd = cargo();
+    cmd.arg("clean");
+    cmd.current_dir(cwd);
     let exit_status = cmd
         .spawn()
         .expect("could not run cargo")
