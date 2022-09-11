@@ -1,12 +1,11 @@
-use std::{error::Error, process::{Command, Stdio}, env, ffi::OsString, fs, time::Instant, path::PathBuf, string};
+use std::{error::Error, time::Instant, path::PathBuf};
 
 use lsp_types::{
-    request::{DocumentHighlightRequest}, InitializeParams, ServerCapabilities, OneOf, SelectionRangeProviderCapability, TextDocumentSyncCapability, TextDocumentSyncOptions, SaveOptions, notification::DidSaveTextDocument,
+    request::DocumentHighlightRequest, InitializeParams, notification::DidSaveTextDocument,
 };
 
-use lsp_server::{Connection, Message, Request, RequestId, Notification, ExtractError};
-use serde::Deserialize;
-use deadlock_lsp::lsp::global_ctxt;
+use lsp_server::{Connection, Message};
+use deadlock_lsp::{lsp::{global_ctxt, get_capabilities, cast_notification, cast_request}, utils::{run_analysis_in_dir, cargo_clean}};
 fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // Note that  we must have our logging only write out to stderr.
     eprintln!("starting generic LSP server");
@@ -15,23 +14,8 @@ fn main() -> Result<(), Box<dyn Error + Sync + Send>> {
     // also be implemented to use sockets or HTTP.
     let (connection, io_threads) = Connection::stdio();
 
-    // Run the server and wait for the two threads to end (typically by trigger LSP Exit event).
-    let server_capabilities = serde_json::to_value(
-        &ServerCapabilities {
-            text_document_sync: Some(TextDocumentSyncCapability::Options(TextDocumentSyncOptions {
-                will_save: None,
-                will_save_wait_until: None,
-                save: Some(SaveOptions::default().into()),
-                open_close: None,
-                change: None,
-            })),
-            selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
-            document_highlight_provider: Some(OneOf::Left(true)),
-            
-            ..Default::default()
-        }
-    ).unwrap();
-    let initialization_params = connection.initialize(server_capabilities)?;
+    
+    let initialization_params = connection.initialize(get_capabilities())?;
     main_loop(connection, initialization_params)?;
     io_threads.join()?;
 
@@ -84,7 +68,7 @@ fn main_loop(
                     return Ok(());
                 }
                 
-                match cast::<DocumentHighlightRequest>(req) {
+                match cast_request::<DocumentHighlightRequest>(req) {
                     Ok((id, params)) => {
                         ctx.send_highlight(id, params);
                     },
@@ -99,12 +83,6 @@ fn main_loop(
             }
             Message::Notification(not) => {
                 eprintln!("got notification: {:?}", not);
-                // match cast_notification::<lsp_types::notification::DidOpenTextDocument>(not.clone()) {
-                //     Ok(params) => {
-                //         eprintln!("DidOpenTextDocument {:?} ", params);
-                //     }
-                //     Err(_) => {}
-                // }
                 match cast_notification::<DidSaveTextDocument>(not.clone()) {
                     Ok(params) => {
                         eprintln!("{:?} saved!", params.text_document);
@@ -137,83 +115,3 @@ fn main_loop(
     Ok(())
 }
 
-fn cast<R>(req: Request) -> Result<(RequestId, R::Params), ExtractError<Request>>
-where
-    R: lsp_types::request::Request,
-    R::Params: serde::de::DeserializeOwned,
-{
-    req.extract(R::METHOD)
-}
-
-
-fn cast_notification<R>(req: Notification) -> Result<R::Params, ExtractError<Notification>>
-where
-    R: lsp_types::notification::Notification,
-    R::Params: serde::de::DeserializeOwned,
-{
-    req.extract(R::METHOD)
-}
-
-fn cargo() -> Command {
-    Command::new(env::var_os("CARGO").unwrap_or_else(|| OsString::from("cargo")))
-}
-
-#[derive(Debug, Deserialize)]
-struct Cargo {
-    package: CargoPackage,
-}
-
-#[derive(Debug, Deserialize)]
-struct CargoPackage {
-    name: String
-}
-
-
-fn run_analysis_in_dir(dir: &str, out: &String) {
-    let ws_dir = std::path::Path::new(dir);
-    eprintln!("running analysis in directory: {}", dir);
-    let mut crate_name = None;
-    let cargo_toml_fp = ws_dir.join("Cargo.toml");
-    match fs::read_to_string(&cargo_toml_fp) {
-        Ok(toml_str) => {
-            let decoded: Cargo = toml::from_str(&toml_str).unwrap();
-            crate_name = Some(decoded.package.name)
-        },
-        Err(err) => {
-            eprintln!("read {:?}: {}", cargo_toml_fp, err)
-        },
-    }
-
-    let mut cmd = cargo();
-
-    let dl_rustc = env::var_os("__DL_RUSTC").unwrap_or(OsString::from(""));
-    cmd.env("RUSTC_WRAPPER", dl_rustc);
-    cmd.env("__DL_CRATE", crate_name.unwrap_or("".to_string()));
-    cmd.env("__DL_OUT", out);
-    cmd.arg("build");
-    cmd.current_dir(ws_dir);
-    cmd.stdout(Stdio::null());
-    eprintln!("{:?} in {:?}", cmd, ws_dir);
-    let exit_status = cmd
-        .spawn()
-        .expect("could not run cargo")
-        .wait()
-        .expect("failed to wait for cargo?");
-    if !exit_status.success() {
-        eprintln!("cargo error code: {}", exit_status.code().unwrap_or(-1));
-    };
-}
-
-fn cargo_clean(cwd: &str) {
-    let mut cmd = cargo();
-    cmd.arg("clean");
-    cmd.current_dir(cwd);
-    let exit_status = cmd
-        .spawn()
-        .expect("could not run cargo")
-        .wait()
-        .expect("failed to wait for cargo?");
-    if !exit_status.success() {
-        eprintln!("cargo error code: {}", exit_status.code().unwrap_or(-1));
-    };
-}

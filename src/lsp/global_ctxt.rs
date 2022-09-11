@@ -1,4 +1,4 @@
-use std::{io::BufReader, error::Error, fs::File, collections::HashMap};
+use std::{ collections::HashMap};
 
 use lsp_types::{ Range, DocumentHighlightKind, Position, DocumentHighlight,DocumentHighlightParams, DiagnosticRelatedInformation, Location, Diagnostic, DiagnosticSeverity, PublishDiagnosticsParams};
 
@@ -23,103 +23,6 @@ pub struct GlobalCtxt {
 }
 
 
-
-fn get_analysis_result(p: &String)->Result<AnalysisResult, Box<dyn Error>> {
-    let file = File::open(p)?;
-    let reader = BufReader::new(file);
-    let r = serde_json::from_reader(reader)?;
-    Ok(r)
-}
-
-fn raw_highlight_to_doc_highlights(raw: &Vec<HighlightArea>) -> IndexedHighlights {
-    let mut ih: IndexedHighlights = HashMap::new();
-    for r in raw {
-        let mut highlights: Vec<DocumentHighlight> = Vec::new();
-        let filename = &r.ranges.first().unwrap().0;
-        for h in &r.ranges {
-            let h: DocumentHighlight = DocumentHighlight {
-                range: Range {
-                    start: Position {
-                        line: h.1-1,
-                        character: h.2-1,
-                    },
-                    end: Position {
-                        line: h.3-1,
-                        character: h.4-1,
-                    },
-                },
-                kind: Some(DocumentHighlightKind::TEXT)
-            };
-            highlights.push(h);
-        }
-        
-        if !ih.contains_key(filename) {
-            ih.insert(filename.to_string(), Vec::new());
-        }
-
-        let zero_based_triggers: Vec<RangeInFile> = r.triggers.iter().map(|t| (t.0.clone(), t.1-1, t.2-1, t.3-1, t.4-1)).collect();
-        ih.get_mut(filename).unwrap().push(DocHighlightsWithTrigger { areas: highlights, triggers: zero_based_triggers } );
-        
-    }
-    return ih;
-}
-
-
-fn suspicious_calls_to_diagnostics(calls: &Vec<SuspiciousCall>) ->IndexedDiagnostics {
-    let mut result: IndexedDiagnostics = HashMap::new();
-    for call in calls {
-        if call.callchains.len() == 0 {
-            eprintln!("unexpected callchain found {:?}", call);
-        }
-        let target = call.callchains.last().unwrap();
-        let relateds = &call.callchains[..call.callchains.len()-1];
-        let mut d = Diagnostic {
-            range: lsp_types::Range { 
-                start: Position { line: target.1-1, character: target.2-1}, 
-                end: Position { line: target.3-1, character: target.4-1 }
-            },
-            severity: Some(DiagnosticSeverity::INFORMATION),
-            code: None,
-            code_description: None,
-            source: Some("rust-deadlock-detector".to_string()),
-            message: format!("{:?} in critical section", call.ty),
-            related_information: None,
-            tags: None,
-            data: None,
-        };
-
-      
-        let drelateds:Vec<DiagnosticRelatedInformation> = relateds.iter().map(|r|{
-            let uri = lsp_types::Url::from_file_path(&r.0).unwrap();
-
-            DiagnosticRelatedInformation {
-                location: Location {
-                    uri,
-                    range: lsp_types::Range { 
-                        start: Position { line: r.1-1, character: r.2-1}, 
-                        end: Position { line: r.3-1, character: r.4-1 }
-                    }
-                },
-                message: "may contains blocking call in critical section".to_string(),
-            }
-        })
-        .collect();
-
-        if drelateds.len() > 0 {
-            d.related_information = Some(drelateds);
-        }
-
-
-        if !result.contains_key(&target.0) {
-            result.insert(target.0.clone(), Vec::new());
-        }
-        result.get_mut(&target.0).unwrap().push(d);
-        
-
-    }
-
-    result
-}
 impl GlobalCtxt {
     pub fn new(sender: Sender<Message>) -> Self {
         Self {
@@ -128,14 +31,13 @@ impl GlobalCtxt {
             file_highlights: HashMap::new()
         }
     }
-    pub fn update_from_json(&mut self, p:&String) {
+    pub fn update_from_json(&mut self, p:&str) {
 
         eprintln!("update analysis result: {}", p);
 
-        match get_analysis_result(p) {
+        match AnalysisResult::from_file(p) {
             Ok(result) => {
-                self.file_highlights = raw_highlight_to_doc_highlights(&result.critical_sections);
-                self.result = Some(result)
+                self.update_from_analysis_result(result)
             },
             Err(err) => {
                 eprintln!("update analysis result: {}", err)
@@ -143,9 +45,14 @@ impl GlobalCtxt {
         }
     }
 
+    fn update_from_analysis_result(&mut self, result: AnalysisResult) {
+        self.file_highlights = raw_highlight_to_doc_highlights(&result.critical_sections);
+        self.result = Some(result)
+    }
 
 
-    fn get_highlights(&self, file:&String, pos:&Position) -> Option<Vec<DocumentHighlight>> {
+
+    fn get_highlights(&self, file:&str, pos:&Position) -> Option<Vec<DocumentHighlight>> {
         eprintln!("finding highlight at {:?} {:?}", file, pos);
 
         match self.file_highlights.get(file) {
@@ -241,13 +148,207 @@ impl GlobalCtxt {
 
 }
 
+fn raw_highlight_to_doc_highlights(raw: &Vec<HighlightArea>) -> IndexedHighlights {
+    let mut ih: IndexedHighlights = HashMap::new();
+    for r in raw {
+        let mut highlights: Vec<DocumentHighlight> = Vec::new();
+        let filename = &r.ranges.first().unwrap().0;
+        for h in &r.ranges {
+            let h: DocumentHighlight = DocumentHighlight {
+                range: Range {
+                    start: Position {
+                        line: h.1-1,
+                        character: h.2-1,
+                    },
+                    end: Position {
+                        line: h.3-1,
+                        character: h.4-1,
+                    },
+                },
+                kind: Some(DocumentHighlightKind::TEXT)
+            };
+            highlights.push(h);
+        }
+        
+        if !ih.contains_key(filename) {
+            ih.insert(filename.to_string(), Vec::new());
+        }
+
+        let zero_based_triggers: Vec<RangeInFile> = r.triggers.iter().map(|t| (t.0.clone(), t.1-1, t.2-1, t.3-1, t.4-1)).collect();
+        ih.get_mut(filename).unwrap().push(DocHighlightsWithTrigger { areas: highlights, triggers: zero_based_triggers } );
+        
+    }
+    return ih;
+}
+
+
+fn suspicious_calls_to_diagnostics(calls: &Vec<SuspiciousCall>) ->IndexedDiagnostics {
+    let mut result: IndexedDiagnostics = HashMap::new();
+    for call in calls {
+        if call.callchains.len() == 0 {
+            eprintln!("unexpected callchain found {:?}", call);
+        }
+        let target = call.callchains.last().unwrap();
+        let relateds = &call.callchains[..call.callchains.len()-1];
+        let mut d = Diagnostic {
+            range: lsp_types::Range { 
+                start: Position { line: target.1-1, character: target.2-1}, 
+                end: Position { line: target.3-1, character: target.4-1 }
+            },
+            severity: Some(DiagnosticSeverity::INFORMATION),
+            code: None,
+            code_description: None,
+            source: Some("rust-deadlock-detector".to_string()),
+            message: format!("{:?} in critical section", call.ty),
+            related_information: None,
+            tags: None,
+            data: None,
+        };
+
+      
+        let drelateds:Vec<DiagnosticRelatedInformation> = relateds.iter().map(|r|{
+            let uri = lsp_types::Url::from_file_path(&r.0).unwrap();
+
+            DiagnosticRelatedInformation {
+                location: Location {
+                    uri,
+                    range: lsp_types::Range { 
+                        start: Position { line: r.1-1, character: r.2-1}, 
+                        end: Position { line: r.3-1, character: r.4-1 }
+                    }
+                },
+                message: "may contains blocking call in critical section".to_string(),
+            }
+        })
+        .collect();
+
+        if drelateds.len() > 0 {
+            d.related_information = Some(drelateds);
+        }
+
+
+        if !result.contains_key(&target.0) {
+            result.insert(target.0.clone(), Vec::new());
+        }
+        result.get_mut(&target.0).unwrap().push(d);
+        
+
+    }
+
+    result
+}
 
 #[cfg(test)]
 mod tests {
+    use std::{fs, error::Error};
+
+    use crossbeam_channel::unbounded;
+
     use crate::lsp::lockbud_ty::Suspicious;
 
     // Note this useful idiom: importing names from outer (for mod tests) scope.
     use super::*;
+
+
+    #[test]
+    fn test_global_ctx_init() {
+        let (s1, _) = unbounded();
+        let ctx = GlobalCtxt::new(s1);
+        assert!(ctx.result.is_none());
+        assert!(ctx.file_highlights.is_empty());
+    }
+
+
+    #[test]
+    fn test_global_ctx_update_from_file() -> Result<(),Box<dyn Error>>  {
+        fs::create_dir_all(".tmp")?;
+
+        let tmp_result_file = ".tmp/_test_result1.json";
+    
+        let mut calls: Vec<SuspiciousCall> = Vec::new();
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file1.rs".to_string(), 4, 5, 6, 7)
+        ], ty: Suspicious::DoubleLock });
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file1.rs".to_string(), 6, 7, 8, 9)
+        ], ty: Suspicious::ConflictLock });
+
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file2.rs".to_string(), 6, 7, 8, 9)
+        ], ty: Suspicious::ChRecv });
+
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file3.rs".to_string(), 6, 7, 8, 9)
+        ], ty: Suspicious::ChSend });
+
+        calls.push(SuspiciousCall { callchains: vec![
+            ("/some/file4.rs".to_string(), 6, 7, 8, 9)
+        ], ty: Suspicious::CondVarWait });
+
+        let result = AnalysisResult {
+            calls,
+            critical_sections: vec![
+                HighlightArea { triggers: vec![
+                    ("file1.rs".to_string(), 1, 2, 3, 4)
+                ], ranges: vec![
+                    ("file1.rs".to_string(), 5, 6, 7, 8)
+                ] },
+    
+                HighlightArea { triggers: vec![
+                    ("file2.rs".to_string(), 1, 2, 3, 4)
+                ], ranges: vec![
+                    ("file2.rs".to_string(), 5, 6, 7, 8)
+                ] }
+            ],
+        };
+
+        result.to_file(tmp_result_file).unwrap();
+        let (s1, _) = unbounded();
+        let mut ctx = GlobalCtxt::new(s1);
+        assert!(ctx.result.is_none());
+        assert!(ctx.file_highlights.is_empty());
+
+        ctx.update_from_json(tmp_result_file);
+
+        assert!(ctx.result.is_some());
+        assert!(!ctx.file_highlights.is_empty());
+
+
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_global_ctx_get_heightlights() -> Result<(),Box<dyn Error>>  {
+
+        let result = AnalysisResult {
+            calls:Vec::new(),
+            critical_sections: vec![
+                HighlightArea { triggers: vec![
+                    ("file1.rs".to_string(), 1, 2, 3, 4)
+                ], ranges: vec![
+                    ("file1.rs".to_string(), 5, 6, 7, 8)
+                ] },
+    
+                HighlightArea { triggers: vec![
+                    ("file2.rs".to_string(), 1, 2, 3, 4)
+                ], ranges: vec![
+                    ("file2.rs".to_string(), 5, 6, 7, 8)
+                ] }
+            ],
+        };
+
+        let (s1, _) = unbounded();
+        let mut ctx = GlobalCtxt::new(s1);
+        ctx.update_from_analysis_result(result);
+
+        let areas = ctx.get_highlights("file1.rs", &Position { line: 1, character: 3 });
+        
+        assert!(areas.is_some());
+        assert_eq!(areas.unwrap().len(), 1);
+        Ok(())
+    }
+
 
     /// 
     /// The test make sures the files and their highlight areas are properly

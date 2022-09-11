@@ -24,9 +24,9 @@
 		],
 		"configuration": {
 			"type": "object",
-			"title": "Example configuration",
+			"title": "rust-deadlock-detector",
 			"properties": {
-				"rust-deadlock.trace.server": {
+				"rust-deadlock-detector.trace.server": {
 					"scope": "window",
 					"type": "string",
 					"enum": [
@@ -36,6 +36,18 @@
 					],
 					"default": "verbose",
 					"description": "Traces the communication between VS Code and the language server."
+				},
+				"rust-deadlock-detector.dyldLibPath": {
+					"type": "string",
+					"description": "Used for DYLD_LIBRARY_PATH in Mac OS or LD_LIBRARY_PATH in Linux to support custom rustc"
+				},
+				"rust-deadlock-detector.luckbud": {
+					"type": "string",
+					"description": "absolute path of executable binary of luckbud"
+				},
+				"rust-deadlock-detector.serverPath": {
+					"type": "string",
+					"description": "absolute path of executable binary of deadlock-lsp"
 				}
 			}
 		}
